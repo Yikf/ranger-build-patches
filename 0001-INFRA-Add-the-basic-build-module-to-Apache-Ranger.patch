@@ -1,0 +1,329 @@
+From 48b93a5384ab4730289cd26d38750486da24b86d Mon Sep 17 00:00:00 2001
+From: yikaifei <yikaifei@baidu.com>
+Date: Wed, 14 Jun 2023 10:58:21 +0800
+Subject: [PATCH] [INFRA] Add the basic build module to Apache Ranger
+
+---
+ .gitattributes |  16 ++++++++
+ .gitignore     |  21 ++++++++++
+ build/build.sh |  61 +++++++++++++++++++++++++++++
+ build/mvn      | 103 +++++++++++++++++++++++++++++++++++++++++++++++++
+ pom.xml        |  73 +++++++++++++++++++++++++++++++++++
+ 5 files changed, 274 insertions(+)
+ create mode 100644 .gitattributes
+ create mode 100644 .gitignore
+ create mode 100644 build/build.sh
+ create mode 100755 build/mvn
+
+diff --git a/.gitattributes b/.gitattributes
+new file mode 100644
+index 0000000..783358a
+--- /dev/null
++++ b/.gitattributes
+@@ -0,0 +1,16 @@
++# Auto detect text files and perform LF normalization
++*        text=auto
++
++*.java   text diff=java eol=lf
++*.html   text diff=html eol=lf
++*.py     text diff=python eol=lf
++*.css    text eol=lf
++*.js     text eol=lf
++*.sql    text eol=lf
++*.sh     text eol=lf
++*.xml    text eol=lf
++*.txt    text eol=lf
++*.json   text eol=lf
++*.jsp    text eol=lf
++*.csv    text eol=lf
++*.properties    text eol=lf
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..b40ccd5
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,21 @@
++*.class
++*.iml
++.pydevproject
++.settings/
++.metadata
++.classpath
++.project
++/target/
++/venv/
++winpkg/target
++.DS_Store
++.idea
++
++#Python
++*.pyc
++**/dist
++**/apache_ranger.egg-info
++.python-version
++
++#mvn download
++/build/apache-maven-*/
+diff --git a/build/build.sh b/build/build.sh
+new file mode 100644
+index 0000000..9e91edc
+--- /dev/null
++++ b/build/build.sh
+@@ -0,0 +1,61 @@
++#!/usr/bin/env bash
++
++#
++# Licensed to the Apache Software Foundation (ASF) under one or more
++# contributor license agreements.  See the NOTICE file distributed with
++# this work for additional information regarding copyright ownership.
++# The ASF licenses this file to You under the Apache License, Version 2.0
++# (the "License"); you may not use this file except in compliance with
++# the License.  You may obtain a copy of the License at
++#
++#    http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++#
++
++set -e
++
++# shellcheck disable=SC2046
++BASEDIR=$(cd "$(dirname $0)/.."; pwd)
++cd "$BASEDIR"
++
++CMD="build/mvn clean compile package install -Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true -Dmaven.wagon.http.ssl.ignore.validity.dates=true -Drat.numUnapprovedLicenses=600 -Pall -Pbuild-repo"
++TEST_CMD="build/mvn clean compile test -Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true -Dmaven.wagon.http.ssl.ignore.validity.dates=true -Drat.numUnapprovedLicenses=600 -Pall -Pbuild-repo"
++
++function usage() {
++    echo "Unknown options [$@]"
++    printf "Please refer the following command:\n\t
++    ./dev/build.sh build(default) -- Build Apache Ranger w/o testing. \n\t
++    ./dev/build.sh release -- Build and release Apache Ranger w/o testing. \n\t
++    ./dev/build.sh test -- Testing Apache Ranger."
++}
++
++function build() {
++    $CMD -DskipTests
++}
++
++function mvn_test() {
++    $CMD
++}
++
++case $1 in
++  (build | "")
++    echo "Building Apache Ranger. "
++    build
++    ;;
++
++  (mvnTest)
++    echo "Testing Apache Ranger. "
++    mvn_test
++    ;;
++
++  (*)
++    usage "$@"
++    ;;
++esac
++
++postBuild
+diff --git a/build/mvn b/build/mvn
+new file mode 100755
+index 0000000..3d22a03
+--- /dev/null
++++ b/build/mvn
+@@ -0,0 +1,103 @@
++#!/usr/bin/env bash
++
++#
++# Licensed to the Apache Software Foundation (ASF) under one or more
++# contributor license agreements.  See the NOTICE file distributed with
++# this work for additional information regarding copyright ownership.
++# The ASF licenses this file to You under the Apache License, Version 2.0
++# (the "License"); you may not use this file except in compliance with
++# the License.  You may obtain a copy of the License at
++#
++#    http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++#
++
++# Determine the current working directory
++_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
++# Preserve the calling directory
++_CALLING_DIR="$(pwd)"
++# Options used during compilation
++_COMPILE_JVM_OPTS="-Xms2g -Xmx2g -XX:ReservedCodeCacheSize=1g -Xss128m"
++
++if [ "$CI" ]; then
++  export MAVEN_CLI_OPTS="--no-transfer-progress --errors --fail-fast"
++fi
++
++function remote_tarball_url() {
++    echo "${APACHE_MIRROR}/maven/maven-3/${MVN_VERSION}/binaries"
++}
++
++# Installs any application tarball given a URL, the expected tarball name,
++# and, optionally, a checkable binary path to determine if the binary has
++# already been installed
++## Arg1 - URL
++## Arg2 - Tarball Name
++## Arg3 - Checkable Binary
++install_app() {
++  local remote_tarball="$1/$2"
++  local local_tarball="${_DIR}/$2"
++  local binary="${_DIR}/$3"
++
++  # setup `curl` and `wget` silent options if we're running on Jenkins
++  local curl_opts="-L"
++  local wget_opts=""
++  curl_opts="--progress-bar ${curl_opts}"
++  wget_opts="--progress=bar:force ${wget_opts}"
++
++  if [ -z "$3" -o ! -f "$binary" ]; then
++    # check if we already have the tarball
++    # check if we have curl installed
++    # download application
++    [ ! -f "${local_tarball}" ] && [ $(command -v curl) ] && \
++      echo "exec: curl ${curl_opts} ${remote_tarball}" 1>&2 && \
++      curl ${curl_opts} "${remote_tarball}" > "${local_tarball}"
++    # if the file still doesn't exist, lets try `wget` and cross our fingers
++    [ ! -f "${local_tarball}" ] && [ $(command -v wget) ] && \
++      echo "exec: wget ${wget_opts} ${remote_tarball}" 1>&2 && \
++      wget ${wget_opts} -O "${local_tarball}" "${remote_tarball}"
++    # if both were unsuccessful, exit
++    [ ! -f "${local_tarball}" ] && \
++      echo -n "ERROR: Cannot download $2 with cURL or wget; " && \
++      echo "please install manually and try again." && \
++      exit 2
++    cd "${_DIR}" && tar -xzf "$2"
++    rm -rf "$local_tarball"
++  fi
++}
++
++# Determine the Maven version from the root pom.xml file and
++# install maven under the build/ folder if needed.
++install_mvn() {
++  local MVN_VERSION=`grep "<maven.version.required>" "${_DIR}/../pom.xml" | head -n1 | awk -F '[<>]' '{print $3}'`
++  MVN_BIN="$(command -v mvn)"
++  if [ "$MVN_BIN" ]; then
++    local MVN_DETECTED_VERSION="$(mvn --version | head -n1 | awk '{print $3}')"
++  fi
++  # See simple version normalization: http://stackoverflow.com/questions/16989598/bash-comparing-version-numbers
++  function version { echo "$@" | awk -F. '{ printf("%03d%03d%03d\n", $1,$2,$3); }'; }
++  if [ $(version $MVN_DETECTED_VERSION) -ne $(version $MVN_VERSION) ]; then
++    local APACHE_MIRROR=${APACHE_MIRROR:-'https://archive.apache.org/dist/'}
++
++    install_app \
++      "$(remote_tarball_url)" \
++      "apache-maven-${MVN_VERSION}-bin.tar.gz" \
++      "apache-maven-${MVN_VERSION}/bin/mvn"
++
++    MVN_BIN="${_DIR}/apache-maven-${MVN_VERSION}/bin/mvn"
++  fi
++}
++
++install_mvn
++
++cd "${_CALLING_DIR}"
++
++# Set any `mvn` options if not already present
++export MAVEN_OPTS=${MAVEN_OPTS:-"$_COMPILE_JVM_OPTS"}
++echo "Using \`mvn\` from path: $MVN_BIN" 1>&2
++echo "Exec: ${MVN_BIN} $MAVEN_CLI_OPTS "$@""
++${MVN_BIN} $MAVEN_CLI_OPTS "$@"
+diff --git a/pom.xml b/pom.xml
+index 8b700d0..aa45e84 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -325,6 +325,79 @@
+             </modules>
+         </profile>
+ 
++        <profile>
++            <id>build-repo</id>
++            <repositories>
++                <repository>
++                    <releases>
++                        <enabled>true</enabled>
++                    </releases>
++                    <snapshots>
++                        <enabled>false</enabled>
++                    </snapshots>
++                    <id>central</id>
++                    <name>Maven Repository</name>
++                    <url>https://repo.maven.apache.org/maven2</url>
++                </repository>
++                <repository>
++                    <releases>
++                        <enabled>true</enabled>
++                    </releases>
++                    <snapshots>
++                        <enabled>false</enabled>
++                    </snapshots>
++                    <id>gcs-maven-central-mirror</id>
++                    <name>GCS Maven Central mirror Asia Pacific</name>
++                    <url>https://maven-central-asia.storage-download.googleapis.com/maven2/</url>
++                </repository>
++                <repository>
++                    <id>alimaven</id>
++                    <name>aliyun maven</name>
++                    <url>http://maven.aliyun.com/nexus/content/groups/public/</url>
++                    <releases>
++                        <updatePolicy>always</updatePolicy>
++                    </releases>
++                    <snapshots>
++                        <updatePolicy>always</updatePolicy>
++                    </snapshots>
++                </repository>
++                <repository>
++                    <id>maven-restlet</id>
++                    <name>Public online Restlet repository</name>
++                    <url>https://maven.restlet.talend.com/</url>
++                </repository>
++                <repository>
++                    <id>cloudera</id>
++                    <name>cloudera Repository</name>
++                    <url>https://repository.cloudera.com/artifactory/libs-release-local/</url>
++                </repository>
++            </repositories>
++            <pluginRepositories>
++                <pluginRepository>
++                    <releases>
++                        <enabled>true</enabled>
++                    </releases>
++                    <snapshots>
++                        <enabled>false</enabled>
++                    </snapshots>
++                    <id>gcs-maven-central-mirror</id>
++                    <name>GCS Maven Central mirror Asia Pacific</name>
++                    <url>https://maven-central-asia.storage-download.googleapis.com/maven2/</url>
++                </pluginRepository>
++
++                <pluginRepository>
++                    <releases>
++                        <enabled>true</enabled>
++                    </releases>
++                    <snapshots>
++                        <enabled>false</enabled>
++                    </snapshots>
++                    <id>central</id>
++                    <url>https://repo.maven.apache.org/maven2</url>
++                </pluginRepository>
++            </pluginRepositories>
++        </profile>
++
+         <profile>
+             <id>ranger-jdk11</id>
+             <activation>
+-- 
+2.39.2 (Apple Git-143)
+

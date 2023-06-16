@@ -1,0 +1,25 @@
+From d61a65193fe0a59b2ff9230b273d748cf3ed688f Mon Sep 17 00:00:00 2001
+From: yikaifei <yikaifei@baidu.com>
+Date: Wed, 14 Jun 2023 10:59:49 +0800
+Subject: [PATCH] [INFRA] Support Apple M1/M2 build
+
+---
+ security-admin/pom.xml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/security-admin/pom.xml b/security-admin/pom.xml
+index 436f099..c174edd 100644
+--- a/security-admin/pom.xml
++++ b/security-admin/pom.xml
+@@ -841,7 +841,7 @@
+             <plugin>
+                 <groupId>com.github.eirslett</groupId>
+                 <artifactId>frontend-maven-plugin</artifactId>
+-                <version>1.6</version>
++                <version>1.11.0</version>
+                 <configuration>
+                     <workingDirectory>${project.build.directory}</workingDirectory>
+                     <installDirectory>${project.build.directory}</installDirectory>
+-- 
+2.39.2 (Apple Git-143)
+

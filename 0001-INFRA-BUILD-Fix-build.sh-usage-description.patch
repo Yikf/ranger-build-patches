@@ -1,0 +1,43 @@
+From 423e978aafb1d2446d9ecec7ded362f2e92b5ab9 Mon Sep 17 00:00:00 2001
+From: yikaifei <yikaifei@baidu.com>
+Date: Thu, 15 Jun 2023 15:39:43 +0800
+Subject: [PATCH] [INFRA][BUILD] Fix build.sh usage description
+
+---
+ build/build.sh | 9 +++------
+ 1 file changed, 3 insertions(+), 6 deletions(-)
+
+diff --git a/build/build.sh b/build/build.sh
+index 9e91edc..febb354 100644
+--- a/build/build.sh
++++ b/build/build.sh
+@@ -29,9 +29,8 @@ TEST_CMD="build/mvn clean compile test -Dmaven.wagon.http.ssl.insecure=true -Dma
+ function usage() {
+     echo "Unknown options [$@]"
+     printf "Please refer the following command:\n\t
+-    ./dev/build.sh build(default) -- Build Apache Ranger w/o testing. \n\t
+-    ./dev/build.sh release -- Build and release Apache Ranger w/o testing. \n\t
+-    ./dev/build.sh test -- Testing Apache Ranger."
++    sh build/build.sh build(default) -- Build Apache Ranger w/o testing. \n\t
++    sh build/build.sh test -- Testing Apache Ranger."
+ }
+ 
+ function build() {
+@@ -48,7 +47,7 @@ case $1 in
+     build
+     ;;
+ 
+-  (mvnTest)
++  (test)
+     echo "Testing Apache Ranger. "
+     mvn_test
+     ;;
+@@ -57,5 +56,3 @@ case $1 in
+     usage "$@"
+     ;;
+ esac
+-
+-postBuild
+-- 
+2.39.2 (Apple Git-143)
+
